@@ -20,17 +20,22 @@ The browser uses a persistent profile in `.browser-profile/`, so cookies (e.g. t
 ## Configuration (`.env`)
 | Variable | Description |
 | --- | --- |
-| `SITES` | Comma-separated site keys to open, e.g. `property` |
+| `SITES` | Comma-separated site keys to open, e.g. `altofaro` |
 | `BROWSER_CHANNEL` | `chrome` (default), `msedge`, or `chromium` (run `bunx playwright install chromium` first) |
-| `<KEY>_<FIELD>` | Value per site field, e.g. `PROPERTY_REFERENCE`, `PROPERTY_AMOUNT`. Unset fields are skipped. |
+| `LOG_LEVEL` | `trace`, `debug`, `info` (default), `warn`, `error`, `fatal` or `silent` |
+| `LOG_PRETTY` | `true`/`false`. Unset = pretty in a terminal, JSON lines when piped |
+| `<KEY>_<FIELD>` | Value per site field, e.g. `ALTOFARO_REFERENCE`, `ALTOFARO_AMOUNT`. Unset fields are skipped. |
 
 ### Available sites
 | Key | Site | Fields |
 | --- | --- | --- |
-| `property` | Property management (AvalPayCenter, Conj Resid Puntalta Altofaro) | `REFERENCE` (apto/torre, digits only), `AMOUNT` (digits only, e.g. `350000`) |
+| `altofaro` | Altofaro (AvalPayCenter, Conj Resid Puntalta Altofaro) | `REFERENCE` (apto/torre, digits only), `AMOUNT` (digits only, e.g. `350000`) |
 | `surtigas` | Surtigas (portal de recaudo) | `CONTRACT` (número de contrato, digits only) |
 | `afinia` | Afinia (Caribemar login) | `EMAIL`, `PASSWORD` (stored in plaintext in your local `.env`; the agent clicks "Ingresar" and opens the invoices page) |
 | `acuacar` | Acuacar | `POLICY` (número de póliza, digits with an optional comma) |
+
+## Logging
+Logs use [Pino](https://getpino.io): structured fields (`site`, `field`, `click`, `err`) with levels `info` for progress, `warn` for fields or clicks that need your attention, `debug` for waits and `fatal` for invalid config. Output is pretty in a terminal and JSON lines when piped (`bun start | jq`). Secret fields (`secret: true`) are never logged, only their length on a mismatch.
 
 ## Adding a site
 Add an entry to `src/sites.ts` with a `key`, `name`, `url` and its `fields` (each with an `envSuffix` and a Playwright locator, preferably `page.getByLabel(...)`). Then add `<KEY>_<SUFFIX>` values to `.env` and the key to `SITES`. `bunx playwright codegen <url>` helps find locators.

@@ -1,11 +1,12 @@
 import { openBrowser, prepareSite } from "./browser";
 import { type Config, loadConfig } from "./config";
+import { logger } from "./logger";
 
 let config: Config;
 try {
   config = loadConfig();
 } catch (error) {
-  console.error(`Config error: ${(error as Error).message}`);
+  logger.fatal({ err: error }, "Invalid configuration");
   process.exit(1);
 }
 
@@ -19,7 +20,7 @@ for (const site of config.sites) {
 }
 if (blank && context.pages().length > 1) await blank.close();
 
-console.log(
-  "\nReview the details and complete the payment in the browser. Close it when you're done.",
+logger.info(
+  "Review the details and complete the payment in the browser. Close it when you're done.",
 );
 await new Promise<void>((resolve) => context.on("close", () => resolve()));

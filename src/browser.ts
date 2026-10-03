@@ -1,5 +1,7 @@
+import type { Logger } from "pino";
 import { type BrowserContext, chromium, type Page } from "playwright";
 import type { Config, ResolvedSite } from "./config";
+import { logger } from "./logger";
 import type { ClickDefinition } from "./sites";
 
 const PROFILE_DIR = ".browser-profile";
@@ -16,7 +18,7 @@ export async function openBrowser(config: Config): Promise<BrowserContext> {
   });
 }
 
-async function runClicks(page: Page, clicks: ClickDefinition[] = []) {
+async function runClicks(page: Page, log: Logger, clicks: ClickDefinition[] = []) {
   for (const click of clicks) {
     const element = click.locate(page);
     try {
@@ -26,34 +28,31 @@ async function runClicks(page: Page, clicks: ClickDefinition[] = []) {
       });
     } catch (error) {
       if (click.optional) continue;
-      console.warn(
-        `  ✖ ${click.label}: could not click (${(error as Error).message.split("\n")[0]})`,
-      );
+      log.warn({ err: error, click: click.label }, "Could not find element to click");
       continue;
     }
     try {
       await element.click();
-      console.log(`  ✔ Clicked ${click.label}`);
+      log.info({ click: click.label }, "Clicked");
     } catch (error) {
-      console.warn(
-        `  ✖ ${click.label}: could not click (${(error as Error).message.split("\n")[0]})`,
-      );
+      log.warn({ err: error, click: click.label }, "Could not click");
     }
   }
 }
 
 /** Opens the site in a new tab and fills its fields. Never enters card/bank data or picks a payment method. */
 export async function prepareSite(context: BrowserContext, { site, fields }: ResolvedSite) {
-  console.log(`\n▶ ${site.name}`);
+  const log = logger.child({ site: site.key });
+  log.info({ name: site.name, url: site.url }, "Preparing site");
   const page = await context.newPage();
   await page.goto(site.url, { waitUntil: "domcontentloaded" });
 
-  await runClicks(page, site.steps);
+  await runClicks(page, log, site.steps);
 
   let fillFailed = false;
   for (const { field, envName, value } of fields) {
     if (!value) {
-      console.warn(`  ⚠ ${field.label}: ${envName} not set, skipping`);
+      log.warn({ field: field.label, envName }, "Env var not set, skipping field");
       continue;
     }
     try {
@@ -70,35 +69,33 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
       const matches = field.digitsOnly ? digits(actual) === digits(value) : actual === value;
       const shown = field.secret ? "••••••" : actual;
       if (matches) {
-        console.log(`  ✔ ${field.label}: ${shown}`);
+        log.info({ field: field.label, shown }, "Field filled");
       } else {
         fillFailed = true;
         // Secrets are never printed, so report lengths to show whether keys were dropped.
         const detail = field.secret
-          ? `expected ${value.length} characters but field has ${actual.length}`
-          : `expected "${value}" but field shows "${actual}"`;
-        console.warn(`  ✖ ${field.label}: ${detail}, please fix it by hand`);
+          ? { expectedLength: value.length, actualLength: actual.length }
+          : { expected: value, actual };
+        log.warn({ field: field.label, ...detail }, "Field value mismatch, please fix it by hand");
       }
     } catch (error) {
       fillFailed = true;
-      console.warn(
-        `  ✖ ${field.label}: could not fill (${(error as Error).message.split("\n")[0]})`,
-      );
+      log.warn({ err: error, field: field.label }, "Could not fill field");
     }
   }
 
   if (fillFailed && site.clicks?.length) {
-    console.warn("  ⚠ Skipping clicks because a field was not filled correctly");
+    log.warn("Skipping clicks because a field was not filled correctly");
   } else {
-    await runClicks(page, site.clicks);
+    await runClicks(page, log, site.clicks);
     if (site.navigateAfter) {
       const { waitForUrl, goto } = site.navigateAfter;
       try {
         if (waitForUrl) await page.waitForURL(waitForUrl, { timeout: FIELD_TIMEOUT_MS });
         await page.goto(goto, { waitUntil: "domcontentloaded" });
-        console.log(`  ✔ Opened ${goto}`);
+        log.info({ goto }, "Opened page after clicks");
       } catch (error) {
-        console.warn(`  ✖ Could not open ${goto} (${(error as Error).message.split("\n")[0]})`);
+        log.warn({ err: error, goto }, "Could not open page after clicks");
       }
     }
   }
@@ -107,24 +104,22 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
 
   // Not awaited: the user may take minutes, and other sites must still get prepared.
   if (site.clickWhenEnabled) {
-    clickWhenEnabled(page, site.name, site.clickWhenEnabled).catch((error) => {
-      console.warn(
-        `  ✖ ${site.name}: ${site.clickWhenEnabled?.label} not clicked (${(error as Error).message.split("\n")[0]})`,
-      );
+    clickWhenEnabled(page, log, site.clickWhenEnabled).catch((error) => {
+      log.warn({ err: error, click: site.clickWhenEnabled?.label }, "Button not clicked");
     });
   }
 }
 
 /** Waits until the button is enabled (e.g. after the user solves a captcha), then clicks it. */
-async function clickWhenEnabled(page: Page, siteName: string, action: ClickDefinition) {
+async function clickWhenEnabled(page: Page, log: Logger, action: ClickDefinition) {
   const button = action.locate(page);
   const deadline = Date.now() + USER_ACTION_TIMEOUT_MS;
   await button.waitFor({ state: "visible", timeout: USER_ACTION_TIMEOUT_MS });
-  console.log(`  … ${siteName}: waiting for "${action.label}" to be enabled`);
+  log.debug({ click: action.label }, "Waiting for button to be enabled");
   while (Date.now() < deadline) {
     if ((await button.isEnabled()) && (!action.readyWhen || (await action.readyWhen(page)))) {
       await button.click();
-      console.log(`\n✔ ${siteName}: clicked ${action.label}`);
+      log.info({ click: action.label }, "Clicked");
       await page.bringToFront();
       return;
     }

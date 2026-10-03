@@ -56,8 +56,8 @@ const byId = (id: string) => (page: Page) => page.locator(`input[id="${id}"]`);
 
 export const sites: SiteDefinition[] = [
   {
-    key: "property",
-    name: "Property management (AvalPayCenter)",
+    key: "altofaro",
+    name: "Altofaro (AvalPayCenter)",
     url: "https://www.avalpaycenter.com/wps/portal/portal-de-pagos/web/pagos-aval/resultado-busqueda/realizar-pago?idConv=00014552&origen=buscar",
     fields: [
       {

@@ -24,7 +24,7 @@ export function loadConfig(env = process.env): Config {
     .filter(Boolean);
 
   if (requested.length === 0) {
-    throw new Error("SITES is empty. Set it in .env, e.g. SITES=property");
+    throw new Error("SITES is empty. Set it in .env, e.g. SITES=altofaro");
   }
 
   const known = new Map(sites.map((site) => [site.key, site]));

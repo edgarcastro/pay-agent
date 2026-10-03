@@ -31,3 +31,6 @@ The browser uses a persistent profile in `.browser-profile/`, so cookies (e.g. t
 
 ## Adding a site
 Add an entry to `src/sites.ts` with a `key`, `name`, `url` and its `fields` (each with an `envSuffix` and a Playwright locator, preferably `page.getByLabel(...)`). Then add `<KEY>_<SUFFIX>` values to `.env` and the key to `SITES`. `bunx playwright codegen <url>` helps find locators.
+
+## Development
+Linting and formatting use [Biome](https://biomejs.dev). `bun run check` verifies, `bun run check:fix` applies fixes. A Husky pre-commit hook (installed by `bun install`) runs `bun run verify` (Biome + typecheck) before each commit.

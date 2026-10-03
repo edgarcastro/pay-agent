@@ -1,5 +1,5 @@
-import { loadConfig, type Config } from "./config";
 import { openBrowser, prepareSite } from "./browser";
+import { type Config, loadConfig } from "./config";
 
 let config: Config;
 try {
@@ -19,5 +19,7 @@ for (const site of config.sites) {
 }
 if (blank && context.pages().length > 1) await blank.close();
 
-console.log("\nReview the details and complete the payment in the browser. Close it when you're done.");
+console.log(
+  "\nReview the details and complete the payment in the browser. Close it when you're done.",
+);
 await new Promise<void>((resolve) => context.on("close", () => resolve()));

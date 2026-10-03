@@ -1,4 +1,4 @@
-import { chromium, type BrowserContext } from "playwright";
+import { type BrowserContext, chromium } from "playwright";
 import type { Config, ResolvedSite } from "./config";
 
 const PROFILE_DIR = ".browser-profile";
@@ -39,10 +39,14 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
       if (matches) {
         console.log(`  ✔ ${field.label}: ${actual}`);
       } else {
-        console.warn(`  ✖ ${field.label}: expected "${value}" but field shows "${actual}", please fix it by hand`);
+        console.warn(
+          `  ✖ ${field.label}: expected "${value}" but field shows "${actual}", please fix it by hand`,
+        );
       }
     } catch (error) {
-      console.warn(`  ✖ ${field.label}: could not fill (${(error as Error).message.split("\n")[0]})`);
+      console.warn(
+        `  ✖ ${field.label}: could not fill (${(error as Error).message.split("\n")[0]})`,
+      );
     }
   }
 
@@ -53,7 +57,9 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
       await element.click();
       console.log(`  ✔ Clicked ${click.label}`);
     } catch (error) {
-      console.warn(`  ✖ ${click.label}: could not click (${(error as Error).message.split("\n")[0]})`);
+      console.warn(
+        `  ✖ ${click.label}: could not click (${(error as Error).message.split("\n")[0]})`,
+      );
     }
   }
 

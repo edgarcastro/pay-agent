@@ -1,4 +1,4 @@
-import { sites, type FieldDefinition, type SiteDefinition } from "./sites";
+import { type FieldDefinition, type SiteDefinition, sites } from "./sites";
 
 export interface ResolvedField {
   field: FieldDefinition;
@@ -37,23 +37,28 @@ export function loadConfig(env = process.env): Config {
 
   const config: Config = {
     browserChannel: env.BROWSER_CHANNEL?.trim() || "chrome",
-    sites: [...new Set(requested)].map((key) => {
-      const site = known.get(key)!;
-      return {
-        site,
-        fields: site.fields.map((field) => {
-          const envName = `${key.toUpperCase()}_${field.envSuffix}`;
-          return { field, envName, value: env[envName]?.trim() || undefined };
-        }),
-      };
+    sites: [...new Set(requested)].flatMap((key) => {
+      const site = known.get(key);
+      if (!site) return [];
+      return [
+        {
+          site,
+          fields: site.fields.map((field) => {
+            const envName = `${key.toUpperCase()}_${field.envSuffix}`;
+            return { field, envName, value: env[envName]?.trim() || undefined };
+          }),
+        },
+      ];
     }),
   };
 
   const problems = config.sites.flatMap(({ fields }) =>
     fields.flatMap(({ field, envName, value }) => {
       if (value === undefined) return [];
-      if (field.digitsOnly && !/^\d+$/.test(value)) return [`${envName} must contain digits only (got "${value}")`];
-      if (field.maxLength && value.length > field.maxLength) return [`${envName} is longer than ${field.maxLength} characters`];
+      if (field.digitsOnly && !/^\d+$/.test(value))
+        return [`${envName} must contain digits only (got "${value}")`];
+      if (field.maxLength && value.length > field.maxLength)
+        return [`${envName} is longer than ${field.maxLength} characters`];
       return [];
     }),
   );

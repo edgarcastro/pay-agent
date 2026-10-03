@@ -21,4 +21,4 @@ Bun + TypeScript + Playwright CLI. Opens payment sites in a persistent Chrome pr
 - TypeScript is strict with `verbatimModuleSyntax` and `noUncheckedIndexedAccess`; use `import type` for types.
 - Husky runs `bun run verify` on every commit. Fix failures instead of bypassing with `--no-verify`.
 - Never commit the local env file or `.browser-profile/`; document new variables in the example env file and the README.
-- The agent must not submit payments itself; the user does the final step.
+- The agent must never enter credit card numbers or bank information, and must never select a payment method or kind of payment. It may click buttons or options explicitly named "pay"/"pagar" (e.g. "Pagar"); the user does everything after that (choosing the bank/method, entering card or bank data, confirming).

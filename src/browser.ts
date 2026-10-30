@@ -58,15 +58,26 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
     try {
       const input = field.locate(page);
       await input.waitFor({ state: "visible", timeout: site.fieldTimeoutMs ?? FIELD_TIMEOUT_MS });
+      const digits = (text: string) => text.replace(/\D/g, "");
+      const isMatch = (actual: string) =>
+        // The site formats some inputs (e.g. "350.000"), so compare digits only.
+        field.digitsOnly ? digits(actual) === digits(value) : actual === value;
+
       await input.clear();
       // Type key by key so the site's input masks/validators react as with a human.
       await input.pressSequentially(value, { delay: field.typeDelayMs ?? 30 });
       await input.blur();
+      let actual = await input.inputValue();
+      let matches = isMatch(actual);
 
-      // The site formats some inputs (e.g. "350.000"), so compare digits only.
-      const actual = await input.inputValue();
-      const digits = (text: string) => text.replace(/\D/g, "");
-      const matches = field.digitsOnly ? digits(actual) === digits(value) : actual === value;
+      if (!matches) {
+        // Page scripts can drop or wipe keystrokes while typing; set the value in one go instead.
+        log.debug({ field: field.label }, "Typed value mismatch, retrying with fill");
+        await input.fill(value);
+        await input.blur();
+        actual = await input.inputValue();
+        matches = isMatch(actual);
+      }
       const shown = field.secret ? "••••••" : actual;
       if (matches) {
         log.info({ field: field.label, shown }, "Field filled");
@@ -95,7 +106,7 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
         await page.goto(goto, { waitUntil: "domcontentloaded" });
         log.info({ goto }, "Opened page after clicks");
       } catch (error) {
-        log.warn({ err: error, goto }, "Could not open page after clicks");
+        log.warn({ err: error, goto, url: page.url() }, "Could not open page after clicks");
       }
     }
   }

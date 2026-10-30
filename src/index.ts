@@ -16,7 +16,14 @@ const context = await openBrowser(config);
 const [blank] = context.pages();
 
 for (const site of config.sites) {
-  await prepareSite(context, site);
+  // One unreachable site (e.g. an SSL error) must not stop the others.
+  try {
+    await prepareSite(context, site);
+  } catch (error) {
+    logger
+      .child({ site: site.site.key })
+      .error({ err: error, url: site.site.url }, "Could not prepare site, skipping it");
+  }
 }
 if (blank && context.pages().length > 1) await blank.close();
 

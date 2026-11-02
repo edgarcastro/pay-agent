@@ -1,8 +1,8 @@
 import type { Logger } from "pino";
 import { type BrowserContext, chromium, type Page } from "playwright";
-import type { Config, ResolvedSite } from "./config";
+import type { Config, ResolvedField, ResolvedSite } from "./config";
 import { logger } from "./logger";
-import type { ClickDefinition } from "./sites";
+import type { ClickDefinition, SiteDefinition } from "./sites";
 
 const PROFILE_DIR = ".browser-profile";
 const FIELD_TIMEOUT_MS = 30_000;
@@ -40,15 +40,13 @@ async function runClicks(page: Page, log: Logger, clicks: ClickDefinition[] = []
   }
 }
 
-/** Opens the site in a new tab and fills its fields. Never enters card/bank data or picks a payment method. */
-export async function prepareSite(context: BrowserContext, { site, fields }: ResolvedSite) {
-  const log = logger.child({ site: site.key });
-  log.info({ name: site.name, url: site.url }, "Preparing site");
-  const page = await context.newPage();
-  await page.goto(site.url, { waitUntil: "domcontentloaded" });
-
-  await runClicks(page, log, site.steps);
-
+/** Fills the given fields in order; returns true if any of them could not be filled correctly. */
+async function fillFields(
+  page: Page,
+  log: Logger,
+  site: SiteDefinition,
+  fields: ResolvedField[],
+): Promise<boolean> {
   let fillFailed = false;
   for (const { field, envName, value } of fields) {
     if (!value) {
@@ -58,6 +56,30 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
     try {
       const input = field.locate(page);
       await input.waitFor({ state: "visible", timeout: site.fieldTimeoutMs ?? FIELD_TIMEOUT_MS });
+
+      if (field.option) {
+        const option = field.option(page, value);
+        await input.click();
+        await option.waitFor({ state: "visible", timeout: OPTIONAL_TIMEOUT_MS });
+        // Read the label first: custom dropdowns remove their options once one is picked.
+        const name = (await option.innerText()).trim();
+        await option.click();
+        // Material selects flag the option; custom ones show the choice in a readonly input.
+        const shownText = await input.evaluate((el) => el.querySelector("input")?.value ?? "");
+        const flagged = await option
+          .getAttribute("aria-selected", { timeout: 1_000 })
+          .catch(() => null);
+        if (shownText.trim() === name || flagged === "true") {
+          log.info({ field: field.label, shown: value }, "Option selected");
+        } else {
+          fillFailed = true;
+          log.warn(
+            { field: field.label, expected: value },
+            "Option not selected, please pick it by hand",
+          );
+        }
+        continue;
+      }
       const digits = (text: string) => text.replace(/\D/g, "");
       const isMatch = (actual: string) =>
         // The site formats some inputs (e.g. "350.000"), so compare digits only.
@@ -94,6 +116,25 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
       log.warn({ err: error, field: field.label }, "Could not fill field");
     }
   }
+  return fillFailed;
+}
+
+/** Opens the site in a new tab and fills its fields. Never enters card/bank data or picks a payment method. */
+export async function prepareSite(context: BrowserContext, { site, fields }: ResolvedSite) {
+  const log = logger.child({ site: site.key });
+  log.info({ name: site.name, url: site.url }, "Preparing site");
+  const page = await context.newPage();
+  await page.goto(site.url, { waitUntil: "domcontentloaded" });
+
+  await runClicks(page, log, site.steps);
+
+  const afterPay = fields.filter(({ field }) => field.afterPay);
+  const fillFailed = await fillFields(
+    page,
+    log,
+    site,
+    fields.filter(({ field }) => !field.afterPay),
+  );
 
   if (fillFailed && site.clicks?.length) {
     log.warn("Skipping clicks because a field was not filled correctly");
@@ -114,9 +155,17 @@ export async function prepareSite(context: BrowserContext, { site, fields }: Res
   await page.bringToFront();
 
   // Not awaited: the user may take minutes, and other sites must still get prepared.
-  if (site.clickWhenEnabled) {
-    clickWhenEnabled(page, log, site.clickWhenEnabled).catch((error) => {
-      log.warn({ err: error, click: site.clickWhenEnabled?.label }, "Button not clicked");
+  const { clickWhenEnabled: payButton } = site;
+  if (payButton) {
+    (async () => {
+      await clickWhenEnabled(page, log, payButton);
+      if (afterPay.length === 0) return;
+      // The next page renders after the click; fillFields waits for each field to show up.
+      log.info("Waiting for the next page to fill the remaining fields");
+      await fillFields(page, log, site, afterPay);
+      await page.bringToFront();
+    })().catch((error) => {
+      log.warn({ err: error, click: payButton.label }, "Button not clicked");
     });
   }
 }

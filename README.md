@@ -25,20 +25,24 @@ The browser uses a persistent profile in `.browser-profile/`, so cookies (e.g. t
 | `LOG_LEVEL` | `trace`, `debug`, `info` (default), `warn`, `error`, `fatal` or `silent` |
 | `LOG_PRETTY` | `true`/`false`. Unset = pretty in a terminal, JSON lines when piped |
 | `<KEY>_<FIELD>` | Value per site field, e.g. `ALTOFARO_REFERENCE`, `ALTOFARO_AMOUNT`. Unset fields are skipped. |
+| `COMMON_<FIELD>` | Personal data shared by several sites: `ID_TYPE` (option code: `CC`, `CE`, `NIT`, `PP`, `TI`, ...), `ID_NUMBER`, `FIRST_NAME`, `LAST_NAME`, `EMAIL`, `ADDRESS`, `PHONE` (10 digits). Used by `acuacar` and `avvillas`. |
 
 ### Available sites
 | Key | Site | Fields |
 | --- | --- | --- |
 | `altofaro` | Altofaro (AvalPayCenter, Conj Resid Puntalta Altofaro) | `REFERENCE` (apto/torre, digits only), `AMOUNT` (digits only, e.g. `350000`) |
+| `avvillas` | AV Villas (AvalPayCenter, obligaciones financieras) | `OBLIGATION` (loan/card number, digits only), `AMOUNT` (digits only), plus `COMMON_ID_TYPE` and `COMMON_ID_NUMBER`; the second dropdown and payment method are yours to choose |
 | `surtigas` | Surtigas (portal de recaudo) | `CONTRACT` (número de contrato, digits only) |
 | `afinia` | Afinia (Caribemar login) | `EMAIL`, `PASSWORD` (stored in plaintext in your local `.env`; the agent clicks "Ingresar" and opens the invoices page) |
-| `acuacar` | Acuacar | `POLICY` (número de póliza, digits with an optional comma) |
+| `acuacar` | Acuacar | `POLICY` (número de póliza, digits with an optional comma), plus the `COMMON_*` data above |
 
 ## Logging
 Logs use [Pino](https://getpino.io): structured fields (`site`, `field`, `click`, `err`) with levels `info` for progress, `warn` for fields or clicks that need your attention, `debug` for waits and `fatal` for invalid config. Output is pretty in a terminal and JSON lines when piped (`bun start | jq`). Secret fields (`secret: true`) are never logged, only their length on a mismatch.
 
 ## Adding a site
 Add an entry to `src/sites.ts` with a `key`, `name`, `url` and its `fields` (each with an `envSuffix` and a Playwright locator, preferably `page.getByLabel(...)`). Then add `<KEY>_<SUFFIX>` values to `.env` and the key to `SITES`. `bunx playwright codegen <url>` helps find locators.
+
+A field can set `envPrefix` (e.g. `COMMON`) to read a shared `COMMON_<SUFFIX>` variable instead of a per-site one, and `option` to pick from a dropdown instead of typing.
 
 Optional site settings: `steps` (clicks run before the fields, to reveal the form), `fieldTimeoutMs` (how long to wait for a field, so you can navigate manually first), `secret: true` on a field to mask it in logs, and `clickWhenEnabled` for a "Pagar" button that stays disabled until you finish something (e.g. a captcha).
 

@@ -44,7 +44,7 @@ export function loadConfig(env = process.env): Config {
         {
           site,
           fields: site.fields.map((field) => {
-            const envName = `${key.toUpperCase()}_${field.envSuffix}`;
+            const envName = `${field.envPrefix ?? key.toUpperCase()}_${field.envSuffix}`;
             return { field, envName, value: env[envName]?.trim() || undefined };
           }),
         },

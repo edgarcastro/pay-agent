@@ -1,11 +1,20 @@
 import type { Locator, Page } from "playwright";
 
 export interface FieldDefinition {
-  /** Env var suffix; the value is read from `<SITE_KEY>_<envSuffix>`. */
+  /** Env var suffix; the value is read from `<envPrefix>_<envSuffix>`. */
   envSuffix: string;
+  /** Env var prefix (default: the site key, uppercased). Use `COMMON` for data shared by sites. */
+  envPrefix?: string;
   /** Human-readable name used in logs. */
   label: string;
   locate: (page: Page) => Locator;
+  /**
+   * Marks a dropdown instead of a text input: `locate` is the dropdown to open and this returns
+   * the option to click for the env value (e.g. its `value` attribute).
+   */
+  option?: (page: Page, value: string) => Locator;
+  /** Filled after `clickWhenEnabled` is clicked, once the next page has rendered. */
+  afterPay?: boolean;
   /** Only digits allowed (the site strips anything else). */
   digitsOnly?: boolean;
   /** Mirrors the input's `maxlength`. */
@@ -54,6 +63,28 @@ export interface SiteDefinition {
 /** Matches an input by its exact id (ids on some sites contain spaces, so `#id` won't work). */
 const byId = (id: string) => (page: Page) => page.locator(`input[id="${id}"]`);
 
+/** Personal data that several sites ask for; read from `COMMON_*` env vars. */
+const commonField = (
+  envSuffix: string,
+  label: string,
+  locate: FieldDefinition["locate"],
+  extra: Partial<FieldDefinition> = {},
+): FieldDefinition => ({ envSuffix, envPrefix: "COMMON", label, locate, ...extra });
+
+/** Acuacar asks for the personal data on the page that follows "Pagar". */
+const afterPay = (field: FieldDefinition): FieldDefinition => ({ ...field, afterPay: true });
+
+/** AvalPayCenter's identification dropdown lists names, not codes. */
+const AVAL_ID_TYPES: Record<string, string> = {
+  CC: "Cédula de ciudadanía",
+  CE: "Cédula de extranjería",
+  TI: "Tarjeta de identidad",
+  PP: "Pasaporte",
+  RC: "Registro civil",
+  NIT: "Nit",
+  CD: "Carnet diplomático",
+};
+
 export const sites: SiteDefinition[] = [
   {
     key: "altofaro",
@@ -75,6 +106,56 @@ export const sites: SiteDefinition[] = [
         maxLength: 19,
       },
     ],
+    clicks: [
+      {
+        label: "Otros medios de pago",
+        locate: (page) => page.locator("p", { hasText: "Otros medios de pago:" }).first(),
+      },
+      {
+        label: "Acepto",
+        locate: (page) => page.locator("span", { hasText: "Acepto" }).first(),
+      },
+    ],
+  },
+  {
+    key: "avvillas",
+    name: "AV Villas (AvalPayCenter)",
+    url: "https://www.avalpaycenter.com/wps/portal/portal-de-pagos/web/pagos-aval/resultado-busqueda/pago-obligaciones-financieras?idConv=O0402&origen=buscar",
+    fields: [
+      {
+        envSuffix: "OBLIGATION",
+        label: "Número de obligación y /o tarjeta de crédito",
+        locate: byId("número de obligación y /o tarjeta de crédito"),
+        digitsOnly: true,
+        maxLength: 16,
+      },
+      commonField(
+        "ID_TYPE",
+        "Tipo de documento",
+        // Both dropdowns share id="select"; the first one sits above the document number.
+        (page) => page.locator("apc-select-form .container").first(),
+        {
+          option: (page, value) => {
+            const name = AVAL_ID_TYPES[value];
+            if (!name) throw new Error(`Unsupported ID type "${value}" for this site`);
+            return page
+              .locator(".options-background")
+              .filter({ hasText: new RegExp(`^\\s*${name}\\s*$`) });
+          },
+        },
+      ),
+      commonField("ID_NUMBER", "Número de documento", byId("número de documento"), {
+        maxLength: 14,
+      }),
+      {
+        envSuffix: "AMOUNT",
+        label: "Valor a pagar",
+        locate: byId("valor a pagar"),
+        digitsOnly: true,
+        maxLength: 19,
+      },
+    ],
+    // Same AvalPayCenter flow as altofaro; the payment method is chosen by the user.
     clicks: [
       {
         label: "Otros medios de pago",
@@ -159,8 +240,47 @@ export const sites: SiteDefinition[] = [
         // The site accepts digits with an optional comma (e.g. "123,456"), so no digitsOnly.
         maxLength: 100,
       },
+      ...[
+        commonField(
+          "ID_TYPE",
+          "Tipo de identificación",
+          (page) => page.locator('md-select[name="tipoIdentificacion"]'),
+          {
+            // Value is the option code: CC, TE, CE, NIT, PP, DE, SDD or TI.
+            option: (page, value) => page.locator(`md-option[value="${value}"]`),
+          },
+        ),
+        commonField(
+          "ID_NUMBER",
+          "No. de identificación",
+          (page) => page.locator('input[name="numIdentificacion"]'),
+          { maxLength: 15 },
+        ),
+        commonField("FIRST_NAME", "Nombres", (page) => page.locator('input[name="name"]'), {
+          maxLength: 128,
+        }),
+        commonField("LAST_NAME", "Apellidos", (page) => page.locator('input[name="lastname"]'), {
+          maxLength: 128,
+        }),
+        commonField(
+          "EMAIL",
+          "Correo electrónico",
+          (page) => page.locator('input[name="contactEmail"]'),
+          { maxLength: 150 },
+        ),
+        commonField("ADDRESS", "Dirección", (page) => page.locator('input[name="direccion"]'), {
+          maxLength: 64,
+        }),
+        commonField(
+          "PHONE",
+          "Teléfono celular",
+          (page) => page.locator('input[name="CellphoneNumber"]'),
+          { digitsOnly: true, maxLength: 10 },
+        ),
+      ].map(afterPay),
     ],
-    // Enabled only after the user solves the reCAPTCHA.
+    // Enabled only after the user solves the reCAPTCHA. The common fields come after this click.
+
     clickWhenEnabled: {
       label: "Pagar",
       // Two buttons share the "Pagar" label; the one to press is the last.

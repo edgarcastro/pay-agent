@@ -32,6 +32,7 @@ async function runClicks(page: Page, log: Logger, clicks: ClickDefinition[] = []
       continue;
     }
     try {
+      if (click.sameTab) await element.evaluate((el) => el.removeAttribute("target"));
       await element.click();
       log.info({ click: click.label }, "Clicked");
     } catch (error) {

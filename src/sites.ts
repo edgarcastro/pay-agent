@@ -33,6 +33,8 @@ export interface ClickDefinition {
   optional?: boolean;
   /** For `clickWhenEnabled`: extra condition that must hold before clicking (e.g. captcha solved). */
   readyWhen?: (page: Page) => Promise<boolean>;
+  /** The link opens a new tab (`target="_blank"`); drop that so the flow stays in this tab. */
+  sameTab?: boolean;
 }
 
 export interface SiteDefinition {
@@ -170,12 +172,27 @@ export const sites: SiteDefinition[] = [
   {
     key: "surtigas",
     name: "Surtigas (gas)",
-    url: "https://surtigas.com.co/portal-de-recaudo/",
+    // The portal only works when reached from this page, not when opened directly.
+    url: "https://www.surtigas.com.co/paga-tu-factura-y-mas",
+    steps: [
+      {
+        label: "Pagar (portal de recaudo)",
+        // Several links point to the portal and some are hidden; use the one wrapping "Pagar".
+        locate: (page) =>
+          page
+            .locator('a[href="https://www.surtigas.com.co/portal-de-recaudo/"]')
+            .filter({ has: page.locator('input[value="Pagar"]') })
+            .first(),
+        sameTab: true,
+      },
+    ],
     fields: [
       {
         envSuffix: "CONTRACT",
         label: "Número de contrato",
-        locate: byId("pesta_0_Digitar_contrato"),
+        // The id/name are long generated hashes; match on the stable placeholder instead.
+        // Tabs repeat the markup, so take the visible one.
+        locate: (page) => page.locator('input.parametros[placeholder^="Eje"]:visible').first(),
         digitsOnly: true,
       },
     ],
